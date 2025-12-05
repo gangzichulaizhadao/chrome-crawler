@@ -77,6 +77,24 @@ export default defineUnlistedScript(() => {
         console.log('📤 发起请求:', url, fetchOptions)
         const response = await fetch(url, fetchOptions)
 
+        // 检查响应状态
+        if (!response.ok) {
+          const errorMsg = `请求失败: ${response.status} ${response.statusText}`
+          console.error('❌', errorMsg)
+          
+          // 对于507错误，提供额外的信息
+          if (response.status === 507) {
+            console.warn('⚠️ 服务器存储不足或触发反爬虫机制，建议增加请求间隔')
+          }
+          
+          // 将错误信息作为失败返回，但包含状态码
+          throw {
+            statusCode: response.status,
+            statusText: response.statusText,
+            message: errorMsg,
+          }
+        }
+
         const contentType = response.headers.get('content-type')
         let responseData: any
 

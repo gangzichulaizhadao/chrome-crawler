@@ -3,7 +3,7 @@ import { handleRequestData, handleRequestData1 } from './handleRequestData'
 import { handleResponseData } from './handleResponseData'
 import { useCrawlerRequest } from '../useCrawlerRequest'
 import { subportReqUrls, channelNumberReqUrls } from '@/utils/config'
-import { exportToExcelFn } from '@/utils/utils'
+import { exportToExcelFn, retryRequest, randomDelayFn } from '@/utils/utils'
 import { ChannelObjItem, ChannelNumberItem, ExportTypeEnum } from '@/types'
 
 export function useCrawlerByChannelNumber() {
@@ -79,7 +79,20 @@ export function useCrawlerByChannelNumber() {
           currentPage.value
         )
 
-        const result = await fetchInPageContext(url, method, body, headers)
+        // 使用重试机制发送请求
+        const result = await retryRequest(
+          () => fetchInPageContext(url, method, body, headers),
+          {
+            maxRetries: 3, // 最多重试3次
+            retryDelay: 3000, // 初始重试延迟3秒
+            retryDelayMultiplier: 2, // 每次重试延迟翻倍
+            shouldRetry: (error: any) => {
+              // 对507、429、503错误进行重试
+              const statusCode = error?.statusCode
+              return [507, 429, 503].includes(statusCode)
+            },
+          }
+        )
 
         const dataArray = handleResponseData(result)
 
@@ -100,8 +113,8 @@ export function useCrawlerByChannelNumber() {
 
       currentPage.value++
 
-      // 随机延迟
-      await randomDelayFn({ minInterval: 1, maxInterval: 5 })
+      // 随机延迟（增加间隔以避免507错误）
+      await randomDelayFn({ minInterval: 3, maxInterval: 8 })
     }
 
     channelNumberListBackup.value = channelNumberList.value
@@ -203,7 +216,20 @@ export function useCrawlerByChannelNumber() {
             item
           )
 
-          const result = await fetchInPageContext(url, method, body, headers)
+          // 使用重试机制发送请求
+          const result = await retryRequest(
+            () => fetchInPageContext(url, method, body, headers),
+            {
+              maxRetries: 3, // 最多重试3次
+              retryDelay: 3000, // 初始重试延迟3秒
+              retryDelayMultiplier: 2, // 每次重试延迟翻倍
+              shouldRetry: (error: any) => {
+                // 对507、429、503错误进行重试
+                const statusCode = error?.statusCode
+                return [507, 429, 503].includes(statusCode)
+              },
+            }
+          )
 
           const dataArray = handleResponseData(result)
 
@@ -231,8 +257,8 @@ export function useCrawlerByChannelNumber() {
           break
         }
 
-        // 随机延迟
-        await randomDelayFn({ minInterval: 1, maxInterval: 5 })
+        // 随机延迟（增加间隔以避免507错误）
+        await randomDelayFn({ minInterval: 3, maxInterval: 8 })
       }
 
       // 如果暂停，则跳出循环

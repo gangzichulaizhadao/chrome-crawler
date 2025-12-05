@@ -18,7 +18,7 @@ export function formatTime(timestamp: number): string {
 }
 
 // 随机延迟函数
-export const randomDelayFn: RandomDelayFn = async ({ minInterval = 1, maxInterval = 5 }) => {
+export const randomDelayFn: RandomDelayFn = async ({ minInterval = 3, maxInterval = 8 }) => {
   const interval = Math.floor(Math.random() * (maxInterval - minInterval + 1)) + minInterval
   await new Promise((resolve) => setTimeout(resolve, interval * 1000))
 }
@@ -73,4 +73,49 @@ export function debounce<T extends (...args: any[]) => any>(
       func.apply(context, args)
     }, wait)
   }
+}
+
+// 重试函数 - 用于处理请求失败的情况
+export async function retryRequest<T>(
+  requestFn: () => Promise<T>,
+  options: {
+    maxRetries?: number // 最大重试次数
+    retryDelay?: number // 重试延迟（毫秒）
+    retryDelayMultiplier?: number // 每次重试延迟的倍数
+    shouldRetry?: (error: any) => boolean // 判断是否需要重试的函数
+  } = {}
+): Promise<T> {
+  const {
+    maxRetries = 3,
+    retryDelay = 2000,
+    retryDelayMultiplier = 2,
+    shouldRetry = (error: any) => {
+      // 默认对507、429、503等错误进行重试
+      const statusCode = error?.statusCode || error?.response?.status
+      return [507, 429, 503, 500].includes(statusCode)
+    },
+  } = options
+
+  let lastError: any
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await requestFn()
+    } catch (error: any) {
+      lastError = error
+      console.warn(`请求失败 (第 ${attempt + 1}/${maxRetries + 1} 次尝试):`, error.message)
+
+      // 如果已经是最后一次尝试，或者不应该重试，则抛出错误
+      if (attempt === maxRetries || !shouldRetry(error)) {
+        throw error
+      }
+
+      // 计算延迟时间
+      const delay = retryDelay * Math.pow(retryDelayMultiplier, attempt)
+      console.log(`等待 ${delay / 1000} 秒后重试...`)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError
 }

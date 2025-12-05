@@ -3,7 +3,7 @@ import { CrawlerConfig, ExportType } from '@/types'
 import { handleRequestData } from './handleRequestData'
 import { handleResponseData } from './handleResponseData'
 import { useCrawlerRequest } from '../useCrawlerRequest'
-import { randomDelayFn, exportToExcelFn } from '@/utils/utils'
+import { randomDelayFn, exportToExcelFn, retryRequest } from '@/utils/utils'
 
 export function useCrawlerSubportOrDrainageData({
   reqUrls,
@@ -21,8 +21,8 @@ export function useCrawlerSubportOrDrainageData({
     // 爬取的配置
     startPage: 1,
     endPage: 0,
-    minInterval: 1,
-    maxInterval: 5,
+    minInterval: 3,  // 增加最小间隔到3秒
+    maxInterval: 8,  // 增加最大间隔到8秒
   })
 
   // 处理请求和响应
@@ -62,7 +62,20 @@ export function useCrawlerSubportOrDrainageData({
       try {
         const { url, method, body, headers } = handleRequestData(selectedRequest.value, currentPage.value)
 
-        const result = await fetchInPageContext(url, method, body, headers)
+        // 使用重试机制发送请求
+        const result = await retryRequest(
+          () => fetchInPageContext(url, method, body, headers),
+          {
+            maxRetries: 3, // 最多重试3次
+            retryDelay: 3000, // 初始重试延迟3秒
+            retryDelayMultiplier: 2, // 每次重试延迟翻倍（3s, 6s, 12s）
+            shouldRetry: (error: any) => {
+              // 对507、429、503错误进行重试
+              const statusCode = error?.statusCode
+              return [507, 429, 503].includes(statusCode)
+            },
+          }
+        )
 
         const dataArray = handleResponseData(result)
 
